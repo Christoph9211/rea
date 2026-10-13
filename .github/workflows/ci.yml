@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  # The latest main push verifies the full tree, including earlier changes.
+  # The latest run supersedes earlier checks for the same PR or branch.
   # Publication uses its own release workflow and concurrency group.
   cancel-in-progress: true
 
@@ -90,6 +90,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - name: Fast main-push safeguards
+        if: github.event_name == 'push'
+        run: npm run check:fast && npm run metadata:check
       - if: needs.changes.outputs.code == 'true'
         run: npm run check:ci
       - if: needs.changes.outputs.code == 'true'

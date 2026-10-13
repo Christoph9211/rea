@@ -1,19 +1,15 @@
 # Releasing REA
 
-Pushes to main automatically open or refresh a Release Please PR with the next
-version and changelog. Review its migration notes and wait for its current CI
-checks to pass. Merging that PR into main starts publication automatically.
+Release preparation and publication are manual-only in this fork. Main pushes
+and PR merges do not run Release Please or start publication. Use the frozen
+checkpoint procedure below when the project is ready to publish.
 
-The Release workflow validates the merged release metadata and ancestry before
-creating a tag. npm and MCP Registry publication use the exact reviewed merge
-SHA returned by Release Please. Later main commits cannot change that source.
-Ordinary main pushes and closed, unmerged PRs cannot publish packages. Check
-both publication jobs and the published-package canary; a merged PR or GitHub
-tag alone does not establish that publication finished. Retry failed jobs in
-the original run after a partial publication.
-
-For a release that needs an independently frozen application checkpoint, use
-the optional manual path below. It retains explicit prepare and publish phases.
+The Release workflow validates checkpoint metadata and ancestry before creating
+a tag. npm and MCP Registry publication use the exact release SHA returned by
+Release Please, which must match the dispatched checkpoint. Later main commits
+cannot change that source. Check both publication jobs and the published-package
+canary; a merged PR or GitHub tag alone does not establish that publication
+finished. Retry failed jobs in the original run after a partial publication.
 
 ## 1. Select a source for a manual checkpoint
 
@@ -21,12 +17,6 @@ Use the next minor version proposed by Release Please, including releases with
 breaking changes. Record the full source SHA and create `release/VERSION` at
 that commit. The selected version and Release Please's proposed version must
 agree before publication.
-
-When choosing the manual path, leave the automatic main release PR unmerged.
-Select the application commit from main, create the frozen branch, and prepare
-its own release PR using the steps below. Merging the main release PR starts
-automatic publication instead. Close the superseded main PR after the manual
-release has published and its metadata has been synchronized back to main.
 
 `release/VERSION` also sets the expected version for the workflow. Use an exact
 SemVer such as `release/6.1.0` or `release/6.1.0-rc.1`, without build metadata.
@@ -84,7 +74,9 @@ gh workflow run release.yml --ref main \
 
 Release Please targets that branch and prepares its version, changelog, and
 registry metadata. The workflow uses an optional `RELEASE_PLEASE_TOKEN`
-repository secret and otherwise uses the built-in `GITHUB_TOKEN`. A dedicated
+repository secret and otherwise uses the built-in `GITHUB_TOKEN`. When using
+the built-in token, repository Actions settings must allow GitHub Actions to
+create pull requests; otherwise preparation fails at PR creation. A dedicated
 GitHub App or personal access token can start PR CI automatically. With the
 built-in token, `opened`, `synchronize`, and `reopened` PR events create runs
 that require a maintainer with write access to approve them. See
@@ -188,9 +180,8 @@ git merge-base --is-ancestor rea-agents-5.0.0 origin/main
 ```
 
 Close the superseded main proposal before merging the synchronization PR.
-That merge's main push opens a proposal for the following release using the
-updated baseline. Future releases can use the automatic main PR or repeat the
-manual checkpoint procedure; automatic proposals do not move frozen branches.
+That merge updates the baseline without starting another release proposal.
+Future releases repeat the manual checkpoint procedure.
 Preparation generates and validates the catalog, portable conformance
 projections, and packaged skill from the candidate checkout without committing
 them. The checkpoint validator binds tracked version authority to the source

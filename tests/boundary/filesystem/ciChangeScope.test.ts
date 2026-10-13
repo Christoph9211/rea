@@ -130,12 +130,13 @@ it("retains complete checks when implementation is renamed into documentation", 
   });
 });
 
-it("retains the complete main-push baseline even for documentation", async () => {
+it("keeps main pushes static-only even for documentation", async () => {
   const { directory, base } = await fixture();
   const head = await change(directory, ["README_ja.md"]);
   expect(await classify(directory, base, head, "push")).toMatchObject({
-    code: true,
-    package: true,
+    code: false,
+    package: false,
+    workflows: true,
   });
 });
 
@@ -176,7 +177,8 @@ it("retains native Inspector verification on every documented package host", asy
   );
   expect(packageInspector.if).toBeUndefined();
   expect(
-    (await classify((await fixture()).directory, "", "", "push")).matrix,
+    (await classify((await fixture()).directory, "", "", "workflow_dispatch"))
+      .matrix,
   ).toEqual({
     include: [
       { os: "ubuntu-latest", platform: "linux", architecture: "x64" },
@@ -473,3 +475,12 @@ it.each(["compile:termux", "build:termux", "build:termux:run"])(
     });
   },
 );
+
+it("cannot expand a push into expensive lanes through CI_FULL", async () => {
+  const { directory, base } = await fixture();
+  const plan = await classify(directory, base, base, "push", true);
+  for (const [scope, selected] of Object.entries(plan)) {
+    if (typeof selected === "boolean")
+      expect(selected).toBe(scope === "workflows");
+  }
+});

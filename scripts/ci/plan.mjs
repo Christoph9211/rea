@@ -85,8 +85,12 @@ function classifyPackage(base, head) {
 
 const event = process.env.GITHUB_EVENT_NAME;
 let files = [];
-if (
-  event === "push" ||
+if (event === "push") {
+  // Pushes get static validation only; PRs select affected lanes and manual
+  // dispatch retains the comprehensive baseline. Never expand a push via CI_FULL.
+  selected.workflows = true;
+  reasons.push("Main push: fast static checks and workflow validation only");
+} else if (
   event === "schedule" ||
   event === "workflow_dispatch" ||
   process.env.CI_FULL === "true"
