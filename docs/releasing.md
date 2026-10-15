@@ -4,12 +4,113 @@ Release preparation and publication are manual-only in this fork. Main pushes
 and PR merges do not run Release Please or start publication. Use the frozen
 checkpoint procedure below when the project is ready to publish.
 
-The Release workflow validates checkpoint metadata and ancestry before creating
-a tag. npm and MCP Registry publication use the exact release SHA returned by
-Release Please, which must match the dispatched checkpoint. Later main commits
-cannot change that source. Check both publication jobs and the published-package
-canary; a merged PR or GitHub tag alone does not establish that publication
-finished. Retry failed jobs in the original run after a partial publication.
+The manually dispatched Release workflow validates checkpoint metadata and
+ancestry before creating a tag. npm and MCP Registry publication use the exact
+release SHA returned by Release Please, which must match the dispatched
+checkpoint. Before either registry is published, the workflow calls full CI
+qualification at that exact revision, including coverage,
+portable providers, and every native package host. Later main commits cannot
+change or cancel that proof.
+After qualification, a separate runner with read-only repository/actions
+permissions restores the retained tarball and verifier runtime. It installs
+that exact archive into an empty prefix, then exercises CLI help/discovery and
+the real stdio MCP catalog/session contract. Installation finishes before the
+protocol deadline begins, with dependency lifecycle scripts disabled. Only a
+successful rehearsal enables the job with npm publishing authority. Both jobs
+use the same release-input action; neither rebuilds or repacks the archive.
+This rehearsal checks package consumption on the Linux release runner;
+qualification retains its broader native-host and real-provider checks.
+
+Before publishing, npm lookup failures and malformed metadata stop the job.
+An existing version must match the qualified tarball's SHA-512 and intended
+`latest`/`next` dist-tag before it can be reused. Publication never overwrites
+an existing version or silently changes a dist-tag. After publication, only
+confirmed registry absence is retried within the propagation window. Content
+or tag mismatches fail immediately. The post-publication verifier installs
+from npm and repeats the same CLI/MCP checks; it also exercises a real update
+from an older stable release. For a prerelease on `next`, that updater still
+targets stable `latest`, as the public update command does.
+
+The required reverse-tools lane runs fresh coverage and both mutation
+preflights. Complete mutation sweeps run separately on a schedule or manual
+dispatch and do not block publication; see [the testing guide](testing.md).
+Main pushes and PR merges do not start release automation or publish packages.
+Check both publication jobs and the published-package canary; a GitHub tag
+alone does not establish that publication finished. Retry failed jobs in the
+original run after a partial publication.
+
+### Recover an already published npm release
+
+Rerunning a job uses its original workflow and source revision. When a verifier
+or publishing workflow needs a code fix, land that fix on main first, then use
+the separate recovery workflow instead of repeating release creation:
+
+```bash
+gh workflow run release-recovery.yml --ref main \
+  -f version=6.5.0 -f release_run_id=38564502044
+```
+
+Select the existing version and its original Release run. This recovery path
+applies to releases created by the previous automatic Release workflow; manual
+frozen-branch releases are outside its scope. Recovery requires that run's
+successful exact-source CI gate and npm publish step. It uses the existing
+release tag, original qualified tarball and verifier runtime;
+expired or missing artifacts stop recovery. The archive's source, version,
+original run/attempt and Node version must match, and its SHA-512 must equal
+npm's published integrity. The corrected controller runs the public CLI, MCP
+catalog/session and previous-version update canary against that released runtime.
+The installation completes before MCP's handshake begins; dependency lifecycle
+scripts are disabled as in the installed-package verifier.
+
+Only after verification succeeds does recovery publish the released
+`server.json` to MCP Registry. It does not create tags or GitHub releases,
+publish npm bytes, or change dist-tags. Both publication paths share the same
+MCP publisher: a paginated registry lookup preserves an identical active
+version, refuses conflicting/inactive metadata, and fails on lookup errors.
+The original failed run remains a historical failure; the recovery run records
+the new verification and remaining registry publication. Manual frozen-branch
+releases are outside this recovery path.
+
+The workflow retains explicit prepare and publish phases for the frozen
+checkpoint.
+
+## Contributor-aware release notes
+
+Use [the rea-changelog-update skill](https://github.com/morluto/rea/blob/main/.agents/skills/rea-changelog-update/SKILL.md)
+to turn the bot draft into grouped Highlights, Changes, and Fixes with inline
+`Thanks @...` credit. `npm run release:notes -- inventory` collects the full
+selected Git range and paginated GitHub PR/author/closing-issue metadata;
+`record --summary` produces a compact provenance link for public notes, while
+`record` produces the full record for review. Credit a contribution once even
+when it appears in highlights, details and migrations; omit maintainer
+`@morluto` self-thanks. Keep complete authorship metadata in the inventory
+instead of duplicating a credit ledger in the release body. `check` validates credits
+and optional PR-body equality, and `render` writes the verified release section.
+Run a subcommand without its required options to see its usage. GitHub reads
+require an authenticated `gh`; record/check/render work offline from the saved
+inventory and complete local Git history.
+
+Save a finalized inventory on the release branch at
+`docs/releases/VERSION.contributions.json`. Review unknown identities and
+reverted/backported work explicitly; GitHub metadata does not establish the
+quality of a user-facing claim. Preserve the existing breaking-change section
+and checkpoint checks. The contribution inventory is a reviewed snapshot, not
+a signed attestation; the offline checker verifies local range coverage and
+credit consistency, not GitHub's authorship independently.
+
+Finalize contribution notes on the frozen release branch before publication.
+The `rea:release-notes-finalized` label does not pause a workflow in this
+manual-only release process. Do not run preparation over finalized notes. The
+label does not freeze the base branch: new base commits require re-inventorying
+and re-reviewing the notes.
+
+Update both the release branch's `CHANGELOG.md` and the PR body, preserving
+Release Please's surrounding metadata. Before creating a release, the workflow
+checks an inventory when present and validates the selected checkpoint. Review
+the diffs within allowed metadata paths as well, especially package
+dependencies and scripts. Existing candidates without inventories retain
+their current checks. A notes edit does not authorize a release: publication
+requires an explicit workflow dispatch from the frozen release branch.
 
 ## 1. Select a source for a manual checkpoint
 
@@ -25,8 +126,10 @@ registry metadata or changelog disagrees with that version before creating a tag
 
 ### Compatibility and version selection
 
-For the 6.2 candidate, review the [6.1 to 6.2 migration guide](migration-6.2.md)
-alongside the changelog before publication.
+Before publishing a candidate, review its changelog's breaking changes and the
+migration notes for the release being prepared. The
+[6.1 to 6.2 migration guide](migration-6.2.md) records that release's changes;
+it is a historical reference, not the compatibility checklist for later releases.
 
 REA uses Release Please's `always-bump-minor` strategy: every release increments
 minor and resets patch, including releases with breaking changes. For example,
@@ -119,18 +222,19 @@ main commits do not change this candidate. A necessary release fix belongs
 on the release branch, must be reviewed and tested, and establishes a new
 recorded checkpoint.
 
-## 3. Publish the reviewed merge
+## 3. Publish the reviewed checkpoint
 
-After the release PR has merged:
+After the reviewed release PR has merged into the frozen release branch:
 
 ```bash
 gh workflow run release.yml --ref release/5.0.0 \
   -f release_branch=release/5.0.0 -f phase=publish
 ```
 
-Publication creates the release from the merged bot PR without preparing or
-updating another PR. Both npm and MCP Registry jobs check out Release Please's
-exact release SHA. They do not build the current main tip or a mutable branch.
+Publication creates the release from the frozen checkpoint without preparing
+or updating another PR. Both npm and MCP Registry jobs check out Release
+Please's exact release SHA. They do not build the current main tip or a mutable
+branch.
 Stable versions publish to npm's `latest` tag; prerelease versions publish to
 the `next` tag so they cannot replace the stable install by default.
 The publish dispatch runs from the frozen release branch so npm's provenance
@@ -142,8 +246,14 @@ both registry publishes.
 See [npm's provenance implementation](https://github.com/npm/cli/blob/v11.16.0/workspaces/libnpmpublish/lib/provenance.js)
 for the use of GitHub's workflow ref and commit SHA.
 
-The workflow builds the bundled Windows controls and verifies the packaged
-artifact before npm publication. It then verifies the published CLI, the
+Full qualification builds the bundled Windows controls and verifies the packaged
+artifact on its native hosts. The Linux x64 verifier retains the exact tarball
+it installed and tested, after its workspace cleanup completes. The npm job
+downloads that archive from the same workflow run and checks its source SHA,
+run identity/attempt, package and Node versions, host identity, and SHA-256.
+It publishes that archive without rebuilding or repacking it. Re-running failed
+publisher jobs can reuse a prior successful attempt from the same run.
+The workflow then verifies the published CLI, the
 capability-scoped MCP catalog, and the isolated package update path before
 publishing MCP Registry metadata.
 
@@ -164,6 +274,15 @@ release baseline and can propose an already-published version again.
 After publication, open a PR from the release branch back to main. Preserve
 main's later implementation changes and regenerate ignored build outputs from
 the combined contracts with the released package version.
+Before merging, check whether GitHub permits merge commits:
+
+```bash
+gh api repos/morluto/rea --jq .allow_merge_commit
+```
+
+If disabled, a maintainer must arrange an approved ancestry-preserving merge
+path before synchronization can finish. Squash and rebase merges do not put the
+released tag in main's ancestry. Do not substitute them for this step.
 Review and test this synchronization PR, then use a merge commit so the release
 tag remains in main's ancestry. Keep the released tag unchanged.
 
@@ -179,8 +298,7 @@ git fetch origin main --tags
 git merge-base --is-ancestor rea-agents-5.0.0 origin/main
 ```
 
-Close the superseded main proposal before merging the synchronization PR.
-That merge updates the baseline without starting another release proposal.
+That merge updates the release baseline without starting release automation.
 Future releases repeat the manual checkpoint procedure.
 Preparation generates and validates the catalog, portable conformance
 projections, and packaged skill from the candidate checkout without committing
