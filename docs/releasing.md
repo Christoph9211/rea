@@ -1,13 +1,14 @@
 # Releasing REA
 
-Pushes to main automatically open or refresh a Release Please PR with the next
-version and changelog. Review its migration notes and wait for its current CI
-checks to pass. Merging that PR into main starts publication automatically.
+Release preparation and publication are manual-only in this fork. Main pushes
+and PR merges do not run Release Please or start publication. Use the frozen
+checkpoint procedure below when the project is ready to publish.
 
-The Release workflow validates the merged release metadata and ancestry before
-creating a tag. npm and MCP Registry publication use the exact reviewed merge
-SHA returned by Release Please. Before either registry is published, the release
-run calls full CI qualification at that exact revision, including coverage,
+The manually dispatched Release workflow validates checkpoint metadata and
+ancestry before creating a tag. npm and MCP Registry publication use the exact
+release SHA returned by Release Please, which must match the dispatched
+checkpoint. Before either registry is published, the workflow calls full CI
+qualification at that exact revision, including coverage,
 portable providers, and every native package host. Later main commits cannot
 change or cancel that proof.
 After qualification, a separate runner with read-only repository/actions
@@ -33,10 +34,10 @@ targets stable `latest`, as the public update command does.
 The required reverse-tools lane runs fresh coverage and both mutation
 preflights. Complete mutation sweeps run separately on a schedule or manual
 dispatch and do not block publication; see [the testing guide](testing.md).
-Ordinary main pushes and closed, unmerged PRs cannot publish packages. Check
-both publication jobs and the published-package canary; a merged PR or GitHub
-tag alone does not establish that publication finished. Retry failed jobs in
-the original run after a partial publication.
+Main pushes and PR merges do not start release automation or publish packages.
+Check both publication jobs and the published-package canary; a GitHub tag
+alone does not establish that publication finished. Retry failed jobs in the
+original run after a partial publication.
 
 ### Recover an already published npm release
 
@@ -49,9 +50,11 @@ gh workflow run release-recovery.yml --ref main \
   -f version=6.5.0 -f release_run_id=38564502044
 ```
 
-Select the existing version and its original automatic Release run. Recovery
-requires that run's successful exact-source CI gate and npm publish step. It
-uses the existing release tag, original qualified tarball and verifier runtime;
+Select the existing version and its original Release run. This recovery path
+applies to releases created by the previous automatic Release workflow; manual
+frozen-branch releases are outside its scope. Recovery requires that run's
+successful exact-source CI gate and npm publish step. It uses the existing
+release tag, original qualified tarball and verifier runtime;
 expired or missing artifacts stop recovery. The archive's source, version,
 original run/attempt and Node version must match, and its SHA-512 must equal
 npm's published integrity. The corrected controller runs the public CLI, MCP
@@ -68,8 +71,8 @@ The original failed run remains a historical failure; the recovery run records
 the new verification and remaining registry publication. Manual frozen-branch
 releases are outside this recovery path.
 
-For a release that needs an independently frozen application checkpoint, use
-the optional manual path below. It retains explicit prepare and publish phases.
+The workflow retains explicit prepare and publish phases for the frozen
+checkpoint.
 
 ## Contributor-aware release notes
 
@@ -95,27 +98,19 @@ and checkpoint checks. The contribution inventory is a reviewed snapshot, not
 a signed attestation; the offline checker verifies local range coverage and
 credit consistency, not GitHub's authorship independently.
 
-Before editing the live PR, add `rea:release-notes-finalized` to prevent ordinary
-main-push proposals from overwriting the editorial notes. Wait for any already
-running proposal to finish. The guard applies to main-push automation; do not
-run manual checkpoint preparation over finalized notes. Remove the label to
-resume bot regeneration. The label does not freeze the base branch: new base
-commits require re-inventorying and re-reviewing the notes.
+Finalize contribution notes on the frozen release branch before publication.
+The `rea:release-notes-finalized` label does not pause a workflow in this
+manual-only release process. Do not run preparation over finalized notes. The
+label does not freeze the base branch: new base commits require re-inventorying
+and re-reviewing the notes.
 
 Update both the release branch's `CHANGELOG.md` and the PR body, preserving
 Release Please's surrounding metadata. Before creating a release, the workflow
-checks an inventory when present, requires its target to equal the reviewed
-merge's first parent, and compares the freshly fetched PR body to the changelog.
-It rejects changes outside the release metadata paths and stale credit records
-before any tag or publication. Review the diffs within allowed metadata paths
-as well, especially package dependencies and scripts. Existing candidates without inventories retain their current
-checks. Merging still starts publication; a notes edit does not authorize a
-merge or release by itself.
-
-The checker supports inline Release Please PR bodies up to GitHub's 65,536
-character limit, including the surrounding header/footer. Overflow-link PR
-bodies need a separate integration and fail explicitly; credits are never
-silently truncated.
+checks an inventory when present and validates the selected checkpoint. Review
+the diffs within allowed metadata paths as well, especially package
+dependencies and scripts. Existing candidates without inventories retain
+their current checks. A notes edit does not authorize a release: publication
+requires an explicit workflow dispatch from the frozen release branch.
 
 ## 1. Select a source for a manual checkpoint
 
@@ -123,12 +118,6 @@ Use the next minor version proposed by Release Please, including releases with
 breaking changes. Record the full source SHA and create `release/VERSION` at
 that commit. The selected version and Release Please's proposed version must
 agree before publication.
-
-When choosing the manual path, leave the automatic main release PR unmerged.
-Select the application commit from main, create the frozen branch, and prepare
-its own release PR using the steps below. Merging the main release PR starts
-automatic publication instead. Close the superseded main PR after the manual
-release has published and its metadata has been synchronized back to main.
 
 `release/VERSION` also sets the expected version for the workflow. Use an exact
 SemVer such as `release/6.1.0` or `release/6.1.0-rc.1`, without build metadata.
@@ -188,7 +177,9 @@ gh workflow run release.yml --ref main \
 
 Release Please targets that branch and prepares its version, changelog, and
 registry metadata. The workflow uses an optional `RELEASE_PLEASE_TOKEN`
-repository secret and otherwise uses the built-in `GITHUB_TOKEN`. A dedicated
+repository secret and otherwise uses the built-in `GITHUB_TOKEN`. When using
+the built-in token, repository Actions settings must allow GitHub Actions to
+create pull requests; otherwise preparation fails at PR creation. A dedicated
 GitHub App or personal access token can start PR CI automatically. With the
 built-in token, `opened`, `synchronize`, and `reopened` PR events create runs
 that require a maintainer with write access to approve them. See
@@ -231,18 +222,19 @@ main commits do not change this candidate. A necessary release fix belongs
 on the release branch, must be reviewed and tested, and establishes a new
 recorded checkpoint.
 
-## 3. Publish the reviewed merge
+## 3. Publish the reviewed checkpoint
 
-After the release PR has merged:
+After the reviewed release PR has merged into the frozen release branch:
 
 ```bash
 gh workflow run release.yml --ref release/5.0.0 \
   -f release_branch=release/5.0.0 -f phase=publish
 ```
 
-Publication creates the release from the merged bot PR without preparing or
-updating another PR. Both npm and MCP Registry jobs check out Release Please's
-exact release SHA. They do not build the current main tip or a mutable branch.
+Publication creates the release from the frozen checkpoint without preparing
+or updating another PR. Both npm and MCP Registry jobs check out Release
+Please's exact release SHA. They do not build the current main tip or a mutable
+branch.
 Stable versions publish to npm's `latest` tag; prerelease versions publish to
 the `next` tag so they cannot replace the stable install by default.
 The publish dispatch runs from the frozen release branch so npm's provenance
@@ -306,10 +298,8 @@ git fetch origin main --tags
 git merge-base --is-ancestor rea-agents-5.0.0 origin/main
 ```
 
-Close the superseded main proposal before merging the synchronization PR.
-That merge's main push opens a proposal for the following release using the
-updated baseline. Future releases can use the automatic main PR or repeat the
-manual checkpoint procedure; automatic proposals do not move frozen branches.
+That merge updates the release baseline without starting release automation.
+Future releases repeat the manual checkpoint procedure.
 Preparation generates and validates the catalog, portable conformance
 projections, and packaged skill from the candidate checkout without committing
 them. The checkpoint validator binds tracked version authority to the source

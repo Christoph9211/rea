@@ -640,8 +640,6 @@ it("rejects a candidate from a different source even when versions and notes mat
 it.skipIf(process.platform === "win32").each([
   { job: "release-please", valid: true },
   { job: "release-please", valid: false },
-  { job: "merged-release", valid: true },
-  { job: "merged-release", valid: false },
 ])(
   "the actual $job preflight admits the next action only for valid metadata ($valid)",
   async ({ job, valid }) => {
@@ -674,9 +672,7 @@ it.skipIf(process.platform === "win32").each([
         workflow.jobs[job]?.steps.find(
           (step) =>
             step.name ===
-            (job === "merged-release"
-              ? "Validate reviewed merge before release creation"
-              : "Validate checkpoint version and ancestry before release creation"),
+            "Validate checkpoint version and ancestry before release creation",
         )?.run,
       );
     const marker = join(f.directory, "next-release-action");
@@ -709,11 +705,7 @@ it.skipIf(process.platform === "win32").each([
     } else {
       await expect(execution).rejects.toMatchObject({
         code: 1,
-        stderr: expect.stringContaining(
-          job === "merged-release"
-            ? "contains unreleased breaking markers"
-            : "release branch requires 6.0.0",
-        ),
+        stderr: expect.stringContaining("release branch requires 6.0.0"),
       });
       await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
     }

@@ -233,6 +233,19 @@ MinGW-w64, and `tar`; the build script does not run on Windows. See that guide
 for the build and artifact-verification commands and the separate real Windows
 verification prerequisites. Keep the generated addon and manifest uncommitted.
 
+## GitHub Actions execution
+
+Main pushes retain typecheck, lint, package metadata and formatting checks,
+plus workflow syntax validation. They do not build packages, upload test
+artifacts, or run native, provider, fixture, documentation or coverage lanes.
+
+Pull requests targeting `main` or `release/*` retain change-based verification
+and the `CI required` aggregate. The `ci:full` label requests every lane for a PR.
+Run **Actions → CI → Run workflow** to select the complete baseline manually,
+including platform package checks, coverage and provider verification. Separate
+engine, Android and website deployment workflows retain their existing manual
+entry points and runner requirements.
+
 ## Documentation website
 
 The VitePress site uses the Markdown files in `docs/`. Run `npm run docs:dev`
@@ -348,13 +361,12 @@ Generated fixtures and manifests remain ignored.
 
 ## Maintainer release checklist
 
-Use the [release guide](docs/releasing.md). Main pushes automatically refresh a
-Release Please PR with the next version and changelog. Review its migration
-notes, wait for the current CI checks to pass, and merge it into main to publish.
-
-The Release workflow validates and tags that merge; both publishers build its
-exact SHA. Ordinary main pushes cannot publish packages. An optional manual
-`release/VERSION` checkpoint retains explicit preparation and publication.
+Use the [release guide](docs/releasing.md). Release preparation and publication
+require manual dispatch with a frozen `release/VERSION` checkpoint. Main pushes
+and PR merges do not start Release Please, create release proposals, or publish.
+Review the candidate's migration notes and CI before explicitly dispatching
+publication. Before registry publication, the workflow qualifies and rehearses
+the exact validated release SHA.
 
 For grouped release notes with verified contributor thanks, use the repository's
 `rea-changelog-update` skill in `.agents/skills/rea-changelog-update/`. Its inventory,
