@@ -339,8 +339,8 @@ feedback and full qualification, including exact-revision release qualification,
 require coverage and both preflights. A failed, canceled, skipped or missing
 selected quality job still fails the required gate.
 
-The separate **Mutation sweep** workflow runs both complete configurations daily
-and on manual dispatch, in two isolated jobs. It is a maintenance check outside
+The separate **Mutation sweep** workflow runs both complete configurations only
+on manual dispatch, in two isolated jobs. It is a maintenance check outside
 the PR and release publication gates. `ci:full` requests full regression,
 coverage and provider qualification; it does not request a complete mutation
 sweep. Use the Mutation sweep workflow to request that result. Targets,
@@ -425,7 +425,7 @@ claim. Current complete timings and completed candidate hosted runs are needed
 before enabling a smaller adaptive matrix.
 
 The separate `CI timings` workflow batches recent completed CI and Release runs
-hourly or on manual dispatch. It uploads `ci-job-timings-batch` with raw API pages and
+on manual dispatch only. It uploads `ci-job-timings-batch` with raw API pages and
 a normalized point-in-time report for each collected workflow attempt, plus a
 batch manifest describing examined coverage, failures, and limits. Overlapping
 lookback windows may collect an attempt again; identify records by run ID and
@@ -998,8 +998,8 @@ leaf-adapter ownership table lives in `scripts/ci/test-selection.mjs`, separatel
 from provider-job scopes. It proposes keeping affected owners plus every unowned
 test, including all CLI/MCP, acceptance, composition, conformance, and process
 tests. Shared inputs, unknown paths, missing owner tests, and removed tests fall
-back to the complete inventory. Renames account for both paths. Main, scheduled,
-manual, and `ci:full` runs always propose the full suite.
+back to the complete inventory. Renames account for both paths. Manual and
+`ci:full` runs always propose the full suite; main pushes do not execute test shards.
 
 All six shards still execute the complete suite. The existing report merge
 compares the proposal with actual module outcomes and retains
@@ -1060,36 +1060,23 @@ verification stays manual. Renames account for both paths.
 This narrower selection trades PR-time coverage for runner capacity. A change to
 unowned shared runtime code that fails only on arm64, macOS, Windows, the Apple
 artifact lane, or a provider lane that does not own the file is not caught on
-the PR; scheduled full qualification reports it after merge. Ownership globs do
+the PR; explicit full qualification can detect it. Ownership globs do
 not follow imports. Use the `ci:full` label when a change may have native-host
 or provider effects outside its owners.
 
-Ordinary main pushes use the same owner scopes as PRs. Their diff starts at a
-successful ancestor push run of this CI workflow, rather than the preceding
-push: changes from failed or cancelled intermediate runs remain in scope.
-Missing, untrusted, or non-ancestor history selects every lane. The lookup is
-bounded to the last 100 successful push runs; lookup failures broaden selection.
-Every code change still selects all six portable shards, without coverage
-instrumentation in this fast tier. Ordinary PR matrices cancel remaining
-shards after the first failure; passing PRs execute the complete suite. Main,
-`ci:full`, scheduled, manual, and release qualification retain every shard's
-results after a failure. Available failed-shard reports remain diagnostic only:
-failed, cancelled, skipped, or missing selected shards cannot pass the gate or
-publish successful timing history. This deliberately avoids relying on an
-import graph for generated files, filesystem inputs, subprocesses, or bridges.
+Ordinary main pushes run typecheck, lint, metadata consistency, repository
+formatting, actionlint and action-pin checks. They select no package builds,
+portable test shards, native/provider lanes, documentation generation or artifact
+uploads, even when `CI_FULL=true`. PRs retain change-scoped verification;
+`ci:full`, manual dispatch and exact release qualification request the full
+baseline. CI, timing collection and mutation sweeps have no schedule triggers.
 
-Scheduled qualification is admitted hourly at minute 23. A forced full run at
-03:23 UTC refreshes runner and dependency drift every day. Other hourly runs
-can reuse a successful full-qualification receipt for the exact source SHA
-from the same repository's trusted CI workflow on its default branch. Both the
-receipt and original workflow run must be less than 24 hours old, so retrying an
-old gate cannot renew stale proof. Missing, expired, failed, foreign, or uncertain proof runs full
-validation; API lookup failure also runs full. Lookups examine at most 100 named
-receipts and three candidate runs within a 20-second budget. Reused runs select
-no validation lanes, identify the original run, and produce no new receipt, so
-reuse cannot indefinitely extend proof freshness. They make no fresh provider
-observation. Manual dispatch, `ci:full`, and exact release qualification always
-run full validation.
+Every PR code change still selects all six portable shards, without coverage
+instrumentation in the fast tier. Ordinary PR matrices cancel remaining shards
+after the first failure; passing PRs execute the complete suite. Full
+qualification retains every shard's results after a failure. Available
+failed-shard reports remain diagnostic only: failed, cancelled, skipped or missing
+selected shards cannot pass the gate or publish successful timing history.
 
 Full qualification includes aggregate coverage,
 every portable provider lane, and all native hosts below. Adding `ci:full`
@@ -1116,7 +1103,7 @@ check. It reads title text through an environment variable, executes no PR code,
 and has no token permissions. Its separate concurrency group cannot cancel
 test runs. Fast PR runs cancel superseded feedback for the same PR. Main push
 runs keep one active run and the latest pending run for that branch.
-Scheduled/manual qualification has a separate concurrency group: active work
+Manual qualification has a separate concurrency group: active work
 finishes and only the latest pending run is retained. Release qualification uses
 its exact source SHA and cannot be cancelled by newer main pushes. Provider and
 website lanes inherit their caller's scheduling; reusable
@@ -1131,18 +1118,17 @@ provider workflows and the Android smoke test retain their explicit triggers.
 
 CI exercises the pinned Node.js runtime on native hosted runners:
 
-| Host                  | Runner             | Baseline checks                                                                             |
-| --------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
-| Linux x64             | `ubuntu-latest`    | Installed package and real Node Inspector CLI/MCP                                           |
-| Linux arm64 (aarch64) | `ubuntu-24.04-arm` | Installed package and real Node Inspector CLI/MCP                                           |
-| macOS 15 arm64        | `macos-15`         | Installed package and real Node Inspector CLI/MCP                                           |
-| macOS 15 x64          | `macos-15-intel`   | Installed package and real Node Inspector CLI/MCP (hourly, dispatch, release and `ci:full`) |
-| Windows x64           | `windows-latest`   | Curated capabilities, native controls, installed package and real Node Inspector CLI/MCP    |
+| Host                  | Runner             | Baseline checks                                                                          |
+| --------------------- | ------------------ | ---------------------------------------------------------------------------------------- |
+| Linux x64             | `ubuntu-latest`    | Installed package and real Node Inspector CLI/MCP                                        |
+| Linux arm64 (aarch64) | `ubuntu-24.04-arm` | Installed package and real Node Inspector CLI/MCP                                        |
+| macOS 15 arm64        | `macos-15`         | Installed package and real Node Inspector CLI/MCP                                        |
+| macOS 15 x64          | `macos-15-intel`   | Installed package and real Node Inspector CLI/MCP (dispatch, release and `ci:full`)      |
+| Windows x64           | `windows-latest`   | Curated capabilities, native controls, installed package and real Node Inspector CLI/MCP |
 
 macOS x64 is the slowest package host. Ordinary PRs and main pushes omit it,
 so darwin x64 installed-package and Inspector regressions surface in full
-qualification. Schedule admission can be delayed by GitHub; the hourly trigger
-does not guarantee an hourly completed result. Release publication waits for
+qualification. Release publication waits for
 its own complete result at the exact released revision.
 
 Package lanes assert the actual Node platform/architecture before verification
@@ -1173,10 +1159,9 @@ dependencies and runs its assigned tests; full qualification enables coverage. I
 regenerates the same metadata independently.
 
 The build job also finds an available `test-timings` artifact from a successful
-trusted default-branch scheduled or manual qualification and includes that same
-report in each shard's snapshot. The bounded lookup verifies the artifact's
-producer; newer schedules that reuse qualification without producing timings do
-not hide the last full run's artifact.
+trusted default-branch manual qualification (or historical scheduled qualification)
+and includes that same report in each shard's snapshot. The bounded lookup verifies the artifact's
+producer and accepts historical scheduled evidence without enabling new schedules.
 CI assigns discovered files by historical duration, with a deterministic
 fallback weight for new files, rather than dividing only by file count. Every
 discovered file still belongs to exactly one shard; worker limits and project

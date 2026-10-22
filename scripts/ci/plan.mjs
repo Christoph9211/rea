@@ -119,9 +119,13 @@ function classifyPackage(base, head) {
 
 const event = process.env.GITHUB_EVENT_NAME;
 if (
-  !["pull_request", "push", "schedule", "workflow_dispatch", "workflow_call"].includes(
-    event,
-  )
+  ![
+    "pull_request",
+    "push",
+    "schedule",
+    "workflow_dispatch",
+    "workflow_call",
+  ].includes(event)
 )
   throw new Error(`Unsupported CI event: ${event}`);
 const requestedFull =
