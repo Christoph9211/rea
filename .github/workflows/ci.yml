@@ -79,15 +79,6 @@ jobs:
         run: |
           test "${SOURCE_SHA}" = "${GITHUB_SHA}"
           test "${SOURCE_SHA}" = "$(git rev-parse HEAD)"
-      - name: Find a verified ancestor for push selection
-        id: baseline
-        if: github.event_name == 'push' && inputs.source_sha == ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.sha }}
-          CI_REPOSITORY: ${{ github.repository }}
-          CI_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: node scripts/ci/baseline.mjs
       - name: Admit scheduled full qualification
         id: qualification
         if: github.event_name == 'schedule' && inputs.source_sha == ''
@@ -102,8 +93,7 @@ jobs:
       - name: Select verification lanes
         id: plan
         env:
-          BASE_SHA: ${{ steps.baseline.outputs.base || github.event.pull_request.base.sha }}
-          BASELINE_REASON: ${{ steps.baseline.outputs.reason }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           CI_FULL: ${{ inputs.source_sha != '' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
           CI_SKIP_FULL: ${{ steps.qualification.outputs.run_full == 'false' }}
@@ -128,6 +118,9 @@ jobs:
         id: npm-cache
         uses: ./.github/actions/npm-cache
       - run: npm ci
+      - name: Fast main-push safeguards
+        if: github.event_name == 'push'
+        run: npm run check:fast && npm run metadata:check
       - name: Restore static task cache
         if: needs.changes.outputs.code == 'true'
         id: static-cache

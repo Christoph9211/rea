@@ -109,7 +109,12 @@ it("reuses only scheduled qualification and preserves every explicit full reques
   expect(reused.tier).toBe("reused");
   const { CI_FLAGS } = await loadScopes();
   for (const flag of CI_FLAGS) expect(reused[flag]).toBe(false);
-  for (const event of ["workflow_dispatch", "pull_request", "schedule"])
+  for (const event of [
+    "workflow_dispatch",
+    "workflow_call",
+    "pull_request",
+    "schedule",
+  ])
     expect(
       (await classify(directory, base, base, event, true, true)).tier,
     ).toBe("full");
@@ -368,51 +373,20 @@ it("retains complete checks when implementation is renamed into documentation", 
   });
 });
 
-it("keeps main pushes scoped when a successful ancestor baseline is available", async () => {
-  const { directory, base } = await fixture();
-  const head = await change(directory, ["docs/readme/README_ja.md"]);
-  expect(await classify(directory, base, head, "push")).toMatchObject({
-    tier: "fast",
-    code: false,
-    package: false,
-    docs: true,
-    matrix: {
-      include: [
-        { os: "ubuntu-latest", platform: "linux", architecture: "x64" },
-      ],
-    },
-  });
-});
-
-it("includes changes from earlier cancelled pushes since the last successful baseline", async () => {
-  const { directory, base } = await fixture();
-  await change(directory, ["src/evm/client.ts"]);
-  const head = await change(directory, ["README.md"]);
-  expect(await classify(directory, base, head, "push")).toMatchObject({
-    tier: "fast",
-    code: true,
-    evm: true,
-    runtime: true,
-    package: false,
-  });
-});
-
-it.each(["", "not-a-commit"])(
-  "fails closed to all lanes for a missing or invalid push baseline (%s)",
-  async (base) => {
-    const { directory } = await fixture();
-    const head = await change(directory, ["README.md"]);
-    const plan = await classify(directory, base, head, "push");
-    expect(plan).toMatchObject({
-      tier: "fast",
-      code: true,
-      package: true,
-      evm: true,
-      browser: true,
-      reasons: expect.arrayContaining([expect.stringContaining("baseline")]),
-    });
-    const { CI_FLAGS } = await loadScopes();
-    for (const flag of CI_FLAGS) expect(plan[flag]).toBe(true);
+it.each([false, true])(
+  "keeps main pushes static-only even with CI_FULL=%s",
+  async (full) => {
+    const { directory, base } = await fixture();
+    const head = await change(directory, ["docs/readme/README_ja.md"]);
+    const plan = await classify(directory, base, head, "push", full);
+    expect(plan.tier).toBe("fast");
+    expect(plan.reasons).toContain(
+      "Main push: fast static checks and workflow validation only",
+    );
+    for (const [scope, selected] of Object.entries(plan)) {
+      if (typeof selected === "boolean")
+        expect(selected).toBe(scope === "workflows");
+    }
   },
 );
 
@@ -504,22 +478,6 @@ it("returns an empty baseline when GitHub lookup fails", async ({ skip }) => {
   expect(JSON.parse(result.stdout)).toMatchObject({
     base: "",
     reason: expect.stringContaining("Could not read"),
-  });
-  expect(head).not.toBe(base);
-});
-
-it("fails closed when the successful push baseline is not an ancestor", async () => {
-  const { directory, base } = await fixture();
-  await git(directory, ["switch", "-c", "unrelated"]);
-  const unrelated = await change(directory, ["other.txt"]);
-  await git(directory, ["switch", "main"]);
-  const head = await change(directory, ["README.md"]);
-  expect(await classify(directory, unrelated, head, "push")).toMatchObject({
-    tier: "fast",
-    code: true,
-    package: true,
-    evm: true,
-    browser: true,
   });
   expect(head).not.toBe(base);
 });
@@ -1168,6 +1126,15 @@ it.each(["compile:termux", "build:termux", "build:termux:run"])(
     });
   },
 );
+
+it("cannot expand a push into expensive lanes through CI_FULL", async () => {
+  const { directory, base } = await fixture();
+  const plan = await classify(directory, base, base, "push", true);
+  for (const [scope, selected] of Object.entries(plan)) {
+    if (typeof selected === "boolean")
+      expect(selected).toBe(scope === "workflows");
+  }
+});
 
 const INTEL_HOST = {
   os: "macos-15-intel",

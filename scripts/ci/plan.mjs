@@ -118,12 +118,23 @@ function classifyPackage(base, head) {
 }
 
 const event = process.env.GITHUB_EVENT_NAME;
-if (!["pull_request", "push", "schedule", "workflow_dispatch"].includes(event))
+if (
+  !["pull_request", "push", "schedule", "workflow_dispatch", "workflow_call"].includes(
+    event,
+  )
+)
   throw new Error(`Unsupported CI event: ${event}`);
 const requestedFull =
   event === "schedule" ||
   event === "workflow_dispatch" ||
-  process.env.CI_FULL === "true";
+  event === "workflow_call" ||
+  (event === "pull_request" && process.env.CI_FULL === "true");
+if (event === "push") {
+  // Pushes get static validation only; PRs select affected lanes and manual
+  // dispatch retains the comprehensive baseline. Never expand a push via CI_FULL.
+  selected.workflows = true;
+  reasons.push("Main push: fast static checks and workflow validation only");
+}
 const tier =
   event === "schedule" &&
   process.env.CI_SKIP_FULL === "true" &&
@@ -139,30 +150,9 @@ if (tier === "reused") {
   );
 } else if (tier === "full") {
   full("Full baseline requested by event or ci:full label");
-} else if (event === "pull_request" || event === "push") {
+} else if (event === "pull_request") {
   const head = process.env.HEAD_SHA;
-  let base;
-  if (event === "pull_request") {
-    base = git("merge-base", process.env.BASE_SHA, head);
-  } else {
-    const candidate = process.env.BASE_SHA;
-    const baselineReason = process.env.BASELINE_REASON;
-    try {
-      if (!candidate || !/^[0-9a-f]{40}$/i.test(candidate))
-        throw new Error(
-          baselineReason || "No valid successful push baseline was found",
-        );
-      execFileSync("git", ["merge-base", "--is-ancestor", candidate, head], {
-        stdio: "ignore",
-      });
-      base = candidate;
-    } catch {
-      full(
-        baselineReason ||
-          "No valid successful push baseline ancestor; selecting all lanes",
-      );
-    }
-  }
+  const base = git("merge-base", process.env.BASE_SHA, head);
   if (base) {
     // Disable rename detection so both the removed and added paths participate.
     files = git("diff", "--name-only", "--no-renames", "-z", base, head)
